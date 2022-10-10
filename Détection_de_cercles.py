@@ -127,7 +127,7 @@ def choose_action(
         print("INSTRUCTIONS\tX : " + messageX + " Y : " + messageY)
 
         # Affichage de la position de la cible dans l'image
-        cv2.putText(
+        show_text(
             canvas,
             "Target Position : ("
             + str(target_point[0])
@@ -232,7 +232,7 @@ def main():
         kernel = np.ones((5, 5), np.uint8) / 25
 
         # FPS de la vidéo
-        cv2.putText(
+        show_text(
             output_frame,
             "FPS : " + str(cap.get(cv2.CAP_PROP_FPS)),
             (image.shape[1] - 100, 15),
