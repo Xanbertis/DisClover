@@ -75,6 +75,28 @@ def choose_action(circles, target_point: Tuple[int, int], canvas, color: Tuple[i
                     (1, canvas.shape[0] - 6), cv2.FONT_HERSHEY_COMPLEX, 0.5, color, 1)
 
 
+def compute_circles(image_hsv, lower_bounds, upper_bounds):
+    image_filtered = cv2.inRange(image_hsv, lower_bounds, upper_bounds)
+
+    # On applique du flou sur l'image pour réduire davantage le bruit
+    image_filtered = cv2.GaussianBlur(image_filtered, (9, 9), 2, 2)
+
+    # Cette fonction compare la différence entre deux éléments
+    # Dans notre cas, nous appliquons un masque sur la comparaison pour ne faire ressortir uniquement la couleur associé à ce masque
+    image_filtered_visu = cv2.bitwise_and(
+        image_hsv, image_hsv, mask=image_filtered)
+
+    # Canny edge detection algorithm
+    image_edges = cv2.Canny(image_filtered_visu, 75, 75)
+
+    # On applique la fonction HoughCircles pour détecter les cercles dans l'image, la fonction renvoit les coordonnées du centre du cercle ainsi que sa taille en pixel
+    # La fonction fonctionne sur des images en grayscale ce qui est le cas de mes masques qui font ressortir en blanc les éléments que l'on veut détecter
+    circles = cv2.HoughCircles(image_edges, cv2.HOUGH_GRADIENT,
+                               image_hsv.shape[0]/64, image_hsv.shape[0]/8, param1=100, param2=30, minRadius=0, maxRadius=0)
+
+    return image_edges, circles
+
+
 #cap = cv2.VideoCapture('http://user:pass@192.168.43.190:8000/stream.mjpg')
 cap = cv2.VideoCapture(0)
 
@@ -160,44 +182,26 @@ while(True):
     cv2.imshow('raw', image_hsv)
     # Possible yellow threshold: [20, 110, 170][20, 110, 170]
     # Possible blue threshold: [20, 115, 70][255, 145, 120]
-    # Il s'agit d'un masque, cela permet de faire ressortir uniquement les couleurs souhaités en fonction d'un interval donné
-    image_hsv_blue = cv2.inRange(image_hsv, np.array(
-        [h_min_b, s_min_b, v_min_b]), np.array([h_max_b, s_max_b, v_max_b]))
-    image_hsv_yellow = cv2.inRange(image_hsv, np.array(
-        [h_min_y, s_min_y, v_min_y]), np.array([h_max_y, s_max_y, v_max_y]))
-    image_hsv_red = cv2.inRange(image_hsv, np.array(
-        [h_min_r, s_min_r, v_min_r]), np.array([h_max_r, s_max_r, v_max_r]))
-    # np.array([h_min, s_min, v_min]), np.array([h_max, s_max, v_max]) Test
-    # On applique du flou sur l'image pour réduire davantage le bruit
-    image_hsv_red = cv2.GaussianBlur(image_hsv_red, (9, 9), 2, 2)
-    image_hsv_yellow = cv2.GaussianBlur(image_hsv_yellow, (9, 9), 2, 2)
-    image_hsv_blue = cv2.GaussianBlur(image_hsv_blue, (9, 9), 2, 2)
 
-    # Cette fonction compare la différence entre deux éléments
-    # Dans notre cas, nous appliquons un masque sur la comparaison pour ne faire ressortir uniquement la couleur associé à ce masque
-    image_hsv_red_visu = cv2.bitwise_and(
-        image_hsv, image_hsv, mask=image_hsv_red)
-    image_hsv_yellow_visu = cv2.bitwise_and(
-        image_hsv, image_hsv, mask=image_hsv_yellow)
-    image_hsv_blue_visu = cv2.bitwise_and(
-        image_hsv, image_hsv, mask=image_hsv_blue)
+    image_hsv_blue, circles_blue = compute_circles(
+        image_hsv,
+        np.array([h_min_b, s_min_b, v_min_b]),
+        np.array([h_max_b, s_max_b, v_max_b]))
 
-    image_hsv_red = cv2.Canny(image_hsv_red_visu, 75, 75)
-    image_hsv_yellow = cv2.Canny(image_hsv_yellow_visu, 75, 75)
-    image_hsv_blue = cv2.Canny(image_hsv_blue_visu, 75, 75)
+    image_hsv_red, circles_red = compute_circles(
+        image_hsv,
+        np.array([h_min_r, s_min_r, v_min_r]),
+        np.array([h_max_r, s_max_r, v_max_r]))
+
+    image_hsv_yellow, circles_yellow = compute_circles(
+        image_hsv,
+        np.array([h_min_y, s_min_y, v_min_y]),
+        np.array([h_max_y, s_max_y, v_max_y]))
+
     # On visualise les résultats
     cv2.imshow('blue', image_hsv_blue)
     cv2.imshow('red', image_hsv_red)
     cv2.imshow('yellow', image_hsv_yellow)
-
-    # On applique la fonction HoughCircles pour détecter les cercles dans l'image, la fonction renvoit les coordonnées du centre du cercle ainsi que sa taille en pixel
-    # La fonction fonctionne sur des images en grayscale ce qui est le cas de mes masques qui font ressortir en blanc les éléments que l'on veut détecter
-    circles_red = cv2.HoughCircles(image_hsv_red, cv2.HOUGH_GRADIENT,
-                                   image_hsv.shape[0]/64, image_hsv.shape[0]/8, param1=100, param2=30, minRadius=0, maxRadius=0)
-    circles_yellow = cv2.HoughCircles(image_hsv_yellow, cv2.HOUGH_GRADIENT,
-                                      image_hsv.shape[0]/64,  image_hsv.shape[0]/8, param1=100, param2=30, minRadius=0, maxRadius=0)
-    circles_blue = cv2.HoughCircles(image_hsv_blue, cv2.HOUGH_GRADIENT,
-                                    image_hsv.shape[0]/64,  image_hsv.shape[0]/8, param1=100, param2=30, minRadius=0, maxRadius=0)
 
     # On désigne le milieu de l'image comme étant la cible à atteindre
     cv2.circle(output_frame, (targetPointX, targetPointY), 1, (0, 0, 0), 3)
