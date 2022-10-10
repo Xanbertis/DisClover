@@ -150,9 +150,15 @@ def find_circles(color_detector, hsv_image, show_edges=True):
     # Cette fonction compare la différence entre deux éléments
     # Dans notre cas, nous appliquons un masque sur la comparaison pour ne faire ressortir uniquement la couleur associé à ce masque
     filtered_image_visu = cv2.bitwise_and(hsv_image, hsv_image, mask=filtered_image)
+    filtered_image_visu = cv2.cvtColor(filtered_image_visu, cv2.COLOR_BGR2GRAY)
+
+    l = cv2.getTrackbarPos("LowerThreshold", "Trackbar")
+    h = cv2.getTrackbarPos("UpperThreshold", "Trackbar")
 
     # Canny edge detection algorithm
-    image_edges = cv2.Canny(filtered_image_visu, 75, 75)
+    image_edges = cv2.Canny(filtered_image_visu, h, l)
+
+    image_edges = cv2.dilate(image_edges, np.ones((5, 5), np.uint8), iterations=1)
 
     if show_edges:
         cv2.imshow("Edges : " + color_detector.name, image_edges)
@@ -164,10 +170,10 @@ def find_circles(color_detector, hsv_image, show_edges=True):
         cv2.HOUGH_GRADIENT,
         hsv_image.shape[0] / 64,
         hsv_image.shape[0] / 8,
-        param1=100,
+        param1=75,
         param2=30,
-        minRadius=0,
-        maxRadius=0,
+        minRadius=10,
+        maxRadius=500,
     )
 
     return circles
@@ -222,6 +228,9 @@ def main():
         ColorDetector("Yellow", "Trackbar", (25, 50, 70), (35, 255, 255)), (0, 255, 255)
     )
     circles = [blue_circles, red_circles, yellow_circles]
+
+    cv2.createTrackbar("LowerThreshold", "Trackbar", 75, 1000, empty)
+    cv2.createTrackbar("UpperThreshold", "Trackbar", 600, 1000, empty)
 
     while True:
         # Capture frame-by-frame
