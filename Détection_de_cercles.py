@@ -52,8 +52,8 @@ def choose_action(circles, target_point: Tuple[int, int], canvas, color: Tuple[i
                     (255, 255, 255), 1)
         # Affichage de la position du cercle dans l'image
         cv2.putText(canvas,
-                    "Circle Position : (" + str(circles_blue[0, 0]) + ";" + str(
-                        circles_blue[0, 1]) + ")",
+                    "Circle Position : (" + str(circles[0, 0]) + ";" + str(
+                        circles[0, 1]) + ")",
                     (canvas.shape[1] - 250, canvas.shape[0] -
                         6), cv2.FONT_HERSHEY_COMPLEX, 0.5,
                     (255, 255, 255), 1)
@@ -206,7 +206,7 @@ while(True):
 
     if circles_red is not None and getContours(image_hsv_red):
         choose_action(circles_red, (targetPointX, targetPointY),
-                      output_frame, (255, 0, 0))
+                      output_frame, (0, 0, 255))
 
     if circles_yellow is not None and getContours(image_hsv_yellow) == "OK":
         choose_action(circles_yellow, (targetPointX, targetPointY),
@@ -214,7 +214,7 @@ while(True):
 
     if circles_blue is not None and getContours(image_hsv_blue) == "OK":
         choose_action(circles_blue, (targetPointX, targetPointY),
-                      output_frame, (0, 0, 255))
+                      output_frame, (255, 0, 0))
 
     cv2.imshow('frame', output_frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
