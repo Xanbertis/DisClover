@@ -49,37 +49,6 @@ class ColorDetector:
         self.lower_bounds[2] = cv2.getTrackbarPos("Val Min " + self.name, self.window)
         self.upper_bounds[2] = cv2.getTrackbarPos("Val Max " + self.name, self.window)
 
-    def find_circles(self, hsv_image, show_edges=True):
-        filtered_image = cv2.inRange(hsv_image, self.lower_bounds, self.upper_bounds)
-
-        # On applique du flou sur l'image pour réduire davantage le bruit
-        filtered_image = cv2.GaussianBlur(filtered_image, (9, 9), 2, 2)
-
-        # Cette fonction compare la différence entre deux éléments
-        # Dans notre cas, nous appliquons un masque sur la comparaison pour ne faire ressortir uniquement la couleur associé à ce masque
-        filtered_image_visu = cv2.bitwise_and(hsv_image, hsv_image, mask=filtered_image)
-
-        # Canny edge detection algorithm
-        image_edges = cv2.Canny(filtered_image_visu, 75, 75)
-
-        if show_edges:
-            cv2.imshow("Edges : " + self.name, image_edges)
-
-        # On applique la fonction HoughCircles pour détecter les cercles dans l'image, la fonction renvoit les coordonnées du centre du cercle ainsi que sa taille en pixel
-        # La fonction fonctionne sur des images en grayscale ce qui est le cas de mes masques qui font ressortir en blanc les éléments que l'on veut détecter
-        circles = cv2.HoughCircles(
-            image_edges,
-            cv2.HOUGH_GRADIENT,
-            hsv_image.shape[0] / 64,
-            hsv_image.shape[0] / 8,
-            param1=100,
-            param2=30,
-            minRadius=0,
-            maxRadius=0,
-        )
-
-        return circles
-
 
 def getContours(img):
     contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
@@ -183,12 +152,38 @@ def choose_action(
         )
 
 
-# cap = cv2.VideoCapture('http://user:pass@192.168.43.190:8000/stream.mjpg')
-cap = cv2.VideoCapture(0)
+def find_circles(color_detector, hsv_image, show_edges=True):
+    filtered_image = cv2.inRange(
+        hsv_image, color_detector.lower_bounds, color_detector.upper_bounds
+    )
 
-# CIBLE SUR L'IMAGE PARAMETRABLE
-targetPointX = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) // 2)
-targetPointY = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) // 2)
+    # On applique du flou sur l'image pour réduire davantage le bruit
+    filtered_image = cv2.GaussianBlur(filtered_image, (9, 9), 2, 2)
+
+    # Cette fonction compare la différence entre deux éléments
+    # Dans notre cas, nous appliquons un masque sur la comparaison pour ne faire ressortir uniquement la couleur associé à ce masque
+    filtered_image_visu = cv2.bitwise_and(hsv_image, hsv_image, mask=filtered_image)
+
+    # Canny edge detection algorithm
+    image_edges = cv2.Canny(filtered_image_visu, 75, 75)
+
+    if show_edges:
+        cv2.imshow("Edges : " + color_detector.name, image_edges)
+
+    # On applique la fonction HoughCircles pour détecter les cercles dans l'image, la fonction renvoit les coordonnées du centre du cercle ainsi que sa taille en pixel
+    # La fonction fonctionne sur des images en grayscale ce qui est le cas de mes masques qui font ressortir en blanc les éléments que l'on veut détecter
+    circles = cv2.HoughCircles(
+        image_edges,
+        cv2.HOUGH_GRADIENT,
+        hsv_image.shape[0] / 64,
+        hsv_image.shape[0] / 8,
+        param1=100,
+        param2=30,
+        minRadius=0,
+        maxRadius=0,
+    )
+
+    return circles
 
 
 def empty(a):
@@ -196,6 +191,13 @@ def empty(a):
 
 
 def main():
+    # cap = cv2.VideoCapture('http://user:pass@192.168.43.190:8000/stream.mjpg')
+    cap = cv2.VideoCapture(0)
+
+    # CIBLE SUR L'IMAGE PARAMETRABLE
+    targetPointX = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) // 2)
+    targetPointY = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) // 2)
+
     # Trackbar avec slider
     cv2.namedWindow("Trackbar")
     cv2.resizeWindow("Trackbar", (300, 900))
@@ -246,9 +248,9 @@ def main():
         # Possible yellow threshold: [20, 110, 170][20, 110, 170]
         # Possible blue threshold: [20, 115, 70][255, 145, 120]
 
-        circles_blue = blue_detector.find_circles(image_hsv, True)
-        circles_red = red_detector.find_circles(image_hsv, True)
-        circles_yellow = yellow_detector.find_circles(image_hsv, True)
+        circles_blue = find_circles(blue_detector, image_hsv, True)
+        circles_red = find_circles(red_detector, image_hsv, True)
+        circles_yellow = find_circles(yellow_detector, image_hsv, True)
 
         # On désigne le milieu de l'image comme étant la cible à atteindre
         cv2.circle(output_frame, (targetPointX, targetPointY), 1, (0, 0, 0), 3)
