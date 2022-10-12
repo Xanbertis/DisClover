@@ -2,56 +2,12 @@ from typing import Tuple
 import numpy as np
 import cv2
 
+from utils import ColorDetector, show_text
+
 # Matrice de taille 5*5, elle permet de faire de la convolution sur notre image pour en modifier ses caractéristiques
 kernel = np.ones((5, 5), np.uint8) / 25
 
 # Fonction de détection d'un cercle en détectant les contours
-
-
-class ColorDetector:
-    def __init__(
-        self,
-        name: str,
-        window: str,
-        lower_bounds=(0, 0, 0),
-        upper_bounds=(180, 255, 255),
-    ) -> None:
-
-        self.name = name
-        self.window = window
-        self.lower_bounds = np.array(lower_bounds)
-        self.upper_bounds = np.array(upper_bounds)
-
-        cv2.createTrackbar(
-            "Hue Min " + self.name, self.window, self.lower_bounds[0], 180, empty
-        )
-        cv2.createTrackbar(
-            "Hue Max " + self.name, self.window, self.upper_bounds[0], 180, empty
-        )
-        cv2.createTrackbar(
-            "Sat Min " + self.name, self.window, self.lower_bounds[1], 255, empty
-        )
-        cv2.createTrackbar(
-            "Sat Max " + self.name, self.window, self.upper_bounds[1], 255, empty
-        )
-        cv2.createTrackbar(
-            "Val Min " + self.name, self.window, self.lower_bounds[2], 255, empty
-        )
-        cv2.createTrackbar(
-            "Val Max " + self.name, self.window, self.upper_bounds[2], 255, empty
-        )
-
-    def update_bounds(self):
-        self.lower_bounds[0] = cv2.getTrackbarPos("Hue Min " + self.name, self.window)
-        self.upper_bounds[0] = cv2.getTrackbarPos("Hue Max " + self.name, self.window)
-        self.lower_bounds[1] = cv2.getTrackbarPos("Sat Min " + self.name, self.window)
-        self.upper_bounds[1] = cv2.getTrackbarPos("Sat Max " + self.name, self.window)
-        self.lower_bounds[2] = cv2.getTrackbarPos("Val Min " + self.name, self.window)
-        self.upper_bounds[2] = cv2.getTrackbarPos("Val Max " + self.name, self.window)
-
-
-def show_text(canvas, text: str, point: Tuple[int, int], color: Tuple[int, int, int]):
-    cv2.putText(canvas, text, point, cv2.FONT_HERSHEY_COMPLEX, 0.5, color, 1)
 
 
 def getContours(img):
@@ -71,11 +27,48 @@ def getContours(img):
     return "NOT OK"
 
 
-def choose_action(
-    circles, target_point: Tuple[int, int], canvas, color: Tuple[int, int, int]
-):
-    circles = np.round(circles[0, :]).astype("int")
-    cv2.circle(
+def close_enough(circle, other, epsilon=0.1):
+    def proximity_ratio(a, b):
+        return abs(1 - a / b)
+
+    if (
+        proximity_ratio(circle[0], other[0]) <= epsilon
+        and proximity_ratio(circle[1], circle[2]) <= epsilon
+        # and proximity_ratio(circle[2], other[2]) <= epsilon
+    ):
+        return True
+
+    return False
+
+
+def choose_action(black_circles, color_circles, target_point: Tuple[int, int], canvas):
+
+    # print(color_circles)
+    for i, circles in enumerate(color_circles):
+        if circles is not None:
+            color_circles[i] = np.uint16(np.around(circles))
+
+    black_circles = np.uint16(np.around(black_circles))
+
+    for c in black_circles[0, :]:
+
+        out = False
+        # iterate over all circles of all colors
+        for circles in color_circles:
+
+            if circles is not None:
+                for other in circles[0, :]:
+                    if close_enough(c, other):
+                        out = True
+
+                        center = (c[0], c[1])
+                        cv2.circle(canvas, center, 1, (0, 255, 0), thickness=2)
+                        cv2.circle(canvas, center, c[2], (0, 255, 0), thickness=2)
+
+            if out:
+                break
+
+    """cv2.circle(
         canvas,
         center=(circles[0, 0], circles[0, 1]),
         radius=circles[0, 2],
@@ -88,9 +81,9 @@ def choose_action(
         radius=2,
         color=color,
         thickness=2,
-    )
+    )"""
 
-    if circles[0, 0] < target_point[0] - 10:
+    """if circles[0, 0] < target_point[0] - 10:
         messageX = "GAUCHE"
     elif target_point[0] + 10 < circles[0, 0]:
         messageX = "DROITE"
@@ -109,22 +102,24 @@ def choose_action(
         # Affichage de la position du cercle dans l'image
         show_text(
             canvas,
-            "Circle Position : (" + str(circles[0, 0]) + ";" + str(circles[0, 1]) + ")",
+            "Circle Position : (" + str(circles[0, 0]) +
+            ";" + str(circles[0, 1]) + ")",
             (canvas.shape[1] - 250, canvas.shape[0] - 6),
             (255, 255, 255),
         )
-        print("INSTRUCTIONS\tDESCENTE")
+        # print("INSTRUCTIONS\tDESCENTE")
     else:
         # Affichage de la position du cercle dans l'image
         show_text(
             canvas,
-            "Circle Position : (" + str(circles[0, 0]) + ";" + str(circles[0, 1]) + ")",
+            "Circle Position : (" + str(circles[0, 0]) +
+            ";" + str(circles[0, 1]) + ")",
             (canvas.shape[1] - 250, canvas.shape[0] - 6),
             color,
         )
         cv2.circle(canvas, target_point, 10, (0, 0, 0), 2)
         # Envoi des instructions dans la console
-        print("INSTRUCTIONS\tX : " + messageX + " Y : " + messageY)
+        #print("INSTRUCTIONS\tX : " + messageX + " Y : " + messageY)
 
         # Affichage de la position de la cible dans l'image
         show_text(
@@ -136,7 +131,18 @@ def choose_action(
             + ")",
             (1, canvas.shape[0] - 6),
             color,
-        )
+        )"""
+
+
+def show_circles(circles, color, canvas):
+    if circles is not None:
+
+        circles = np.uint16(np.around(circles))
+
+        for c in circles[0, :]:
+            center = (c[0], c[1])
+            cv2.circle(canvas, center, 1, color, thickness=2)
+            cv2.circle(canvas, center, c[2], color, thickness=2)
 
 
 def find_circles(color_detector, hsv_image, show_edges=True):
@@ -168,11 +174,11 @@ def find_circles(color_detector, hsv_image, show_edges=True):
     circles = cv2.HoughCircles(
         image_edges,
         cv2.HOUGH_GRADIENT,
-        hsv_image.shape[0] / 64,
-        hsv_image.shape[0] / 8,
-        param1=75,
-        param2=30,
-        minRadius=10,
+        4.5,
+        100,
+        param1=100,
+        param2=250,
+        minRadius=20,
         maxRadius=500,
     )
 
@@ -187,7 +193,7 @@ class ColorCircles:
     def __init__(self, detector: ColorDetector, display_color: Tuple[int, int, int]):
         self.detector = detector
         self.display_color = display_color
-        self.circles = []
+        self.circles: list = []
 
     def update(self):
         self.detector.update_bounds()
@@ -195,10 +201,11 @@ class ColorCircles:
     def find_circles(self, hsv_image):
         self.circles = find_circles(self.detector, hsv_image, True)
 
-    def choose_action(self, target, canvas):
-        # getContours was removed from check, need to check if it’s necessary or can be bypassed
-        if self.circles is not None:
-            choose_action(self.circles, target, canvas, self.display_color)
+
+#    def choose_action(self, target, canvas):
+#        # getContours was removed from check, need to check if it’s necessary or can be bypassed
+#        if self.circles is not None:
+#            choose_action(self.circles, target, canvas, self.display_color)
 
 
 def main():
@@ -217,7 +224,7 @@ def main():
 
     # Possible blue threshold: [20, 115, 70][255, 145, 120]
     blue_circles = ColorCircles(
-        ColorDetector("Blue", "Trackbar", (90, 50, 70), (128, 255, 255)), (255, 0, 0)
+        ColorDetector("Blue", "Trackbar", (106, 127, 126), (131, 216, 250)), (255, 0, 0)
     )
     # No other recorded possible value for red
     red_circles = ColorCircles(
@@ -227,7 +234,12 @@ def main():
     yellow_circles = ColorCircles(
         ColorDetector("Yellow", "Trackbar", (25, 50, 70), (35, 255, 255)), (0, 255, 255)
     )
-    circles = [blue_circles, red_circles, yellow_circles]
+
+    black_circles = ColorCircles(
+        ColorDetector("Black", "Trackbar", upper_bounds=(180, 255, 45)), (255, 255, 255)
+    )
+
+    circles = [black_circles, blue_circles]
 
     cv2.createTrackbar("LowerThreshold", "Trackbar", 75, 1000, empty)
     cv2.createTrackbar("UpperThreshold", "Trackbar", 600, 1000, empty)
@@ -248,14 +260,17 @@ def main():
             (255, 0, 255),
         )
 
-        # Cette fonction permet de réduire le bruit sur l'image
-        image_bgr = cv2.bilateralFilter(image, 5, 200, 200)
-        # L'érosion et la dilation permettent de volontairement dégrader l'image afin d'en faire ressortir des éléments
-        image_bgr = cv2.erode(image_bgr, kernel, iterations=3)
-        image_bgr = cv2.dilate(image_bgr, kernel, iterations=5)
-        cv2.imshow("erode", image_bgr)
+        image_bf = image.copy()
+        # image_bf = cv2.bilateralFilter(image, 5, 400, 400)
+
+        cv2.imshow("filtered", image_bf)
+
         # On convertit dans le format HSV pour pouvoir toucher à la teinte, la saturation et la luminosité de la couleur
-        image_hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
+        image_hsv = cv2.cvtColor(image_bf, cv2.COLOR_BGR2HSV)
+
+        image_hsv = cv2.bilateralFilter(image_hsv, 5, 200, 200)
+        image_hsv = cv2.erode(image_hsv, kernel, iterations=1)
+        image_hsv = cv2.dilate(image_hsv, kernel, iterations=2)
 
         cv2.imshow("raw", image_hsv)
 
@@ -265,7 +280,16 @@ def main():
         for c in circles:
             c.update()
             c.find_circles(image_hsv)
-            c.choose_action(target_point, output_frame)
+
+            show_circles(c.circles, c.display_color, output_frame)
+
+        if circles[0].circles is not None:
+            choose_action(
+                circles[0].circles,
+                [circles[1].circles],
+                target_point,
+                output_frame,
+            )
 
         cv2.imshow("frame", output_frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
