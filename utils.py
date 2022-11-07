@@ -1,6 +1,7 @@
 from typing import Tuple
 import cv2
 import numpy as np
+from numba import jit
 
 
 def empty(_):
@@ -53,7 +54,7 @@ def show_text(canvas, text: str, point: Tuple[int, int], color: Tuple[int, int, 
     cv2.putText(canvas, text, point, cv2.FONT_HERSHEY_COMPLEX, 0.5, color, 1)
 
 
-def downscale(image: cv2.Mat, factor: float, interpolation=cv2.INTER_LINEAR):
+def downscale(image: cv2.Mat, factor: float, interpolation=cv2.INTER_LINEAR) -> cv2.Mat:
 
     (h, w, _) = image.shape
     new_size = (w // factor, h // factor)
