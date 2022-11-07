@@ -3,6 +3,10 @@ import cv2
 import numpy as np
 
 
+def empty(_):
+    pass
+
+
 class ColorDetector:
     def __init__(
         self,
@@ -16,9 +20,6 @@ class ColorDetector:
         self.window = window
         self.lower_bounds = np.array(lower_bounds)
         self.upper_bounds = np.array(upper_bounds)
-
-        def empty():
-            pass
 
         cv2.createTrackbar(
             "Hue Min " + self.name, self.window, self.lower_bounds[0], 180, empty
