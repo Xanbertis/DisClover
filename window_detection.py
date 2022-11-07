@@ -1,16 +1,19 @@
 import cv2
 import numpy as np
 
+from utils import downscale
+
 
 def main():
 
-    cap = cv2.VideoCapture(0)
+    color_image = cv2.imread("./images/window_1.jpg")
+
+    color_image = downscale(color_image, 5, interpolation=cv2.INTER_CUBIC)
 
     target_point = (640 // 2, 480 // 2)
 
     while True:
 
-        _, color_image = cap.read()
         image = color_image.copy()
 
         result = cv2.cvtColor(color_image, cv2.COLOR_BGR2HSV)
