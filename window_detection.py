@@ -67,15 +67,57 @@ def process_image(image: cv2.Mat, win_name: str):
 
     hist = cv2.erode(hist, (7, 7), iterations=2)
 
-    d = cv2.getTrackbarPos("d", "Trackbars")
-    hist = cv2.bilateralFilter(hist, d, 1000, 200)
-
+    # d = 5
+    # hist = cv2.bilateralFilter(hist, d, 1000, 200)
     # hist = cv2.dilate(hist, (7, 7))
 
     canny_hist = cv2.Canny(hist, 250, 100)
 
+    horizontal = np.copy(canny_hist)
+    vertical = np.copy(canny_hist)
+
+    filter_width = cv2.getTrackbarPos("Filter Width", "Trackbars")
+
+    cols = horizontal.shape[1]
+    h_size = cols // filter_width
+    h_structure = cv2.getStructuringElement(cv2.MORPH_RECT, (h_size, 1))
+
+    horizontal = cv2.erode(horizontal, h_structure)
+    horizontal = cv2.dilate(horizontal, h_structure)
+
+    lines = vertical.shape[0]
+    v_size = lines // filter_width
+    v_struct = cv2.getStructuringElement(cv2.MORPH_RECT, (1, v_size))
+
+    vertical = cv2.erode(vertical, v_struct)
+    vertical = cv2.dilate(vertical, v_struct)
+
+    combined = cv2.bitwise_or(horizontal, vertical)
+    combined = cv2.dilate(combined, (7, 7), iterations=3)
+
+    """
+    min_line_length = cv2.getTrackbarPos("Min line length", "Trackbars")
+    max_line_gap = cv2.getTrackbarPos("Max line gap", "Trackbars")
+    hough_thr = cv2.getTrackbarPos("Hough threshold", "Trackbars")
+
+    
+    hough_lines = cv2.HoughLines(
+        combined, 1, np.pi / 180, 40, min_line_length, max_line_gap
+    )
+    #lines = cv2.HoughLinesP(
+    #    combined, 1, np.pi / 180, hough_thr, min_line_length, max_line_gap
+    #)
+
+    try:
+        if lines is not None:
+            for line in lines:
+                for x1, y1, x2, y2 in line:  # weird triple list
+                    cv2.line(result, (x1, y1), (x2, y2), (0, 255, 0), 1)
+    except TypeError:
+        pass
+
     contours, hierarchy = cv2.findContours(
-        canny_hist, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE
+        combined, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE
     )
 
     min_area = cv2.getTrackbarPos("Area", "Trackbars")
@@ -86,12 +128,13 @@ def process_image(image: cv2.Mat, win_name: str):
         if area > min_area:
             # drawing contours is a very big performance hit
             cv2.drawContours(result, cnt, -1, (0, 0, 255), 2)
+    """
 
     result = np.concatenate(
         (
             three_channels(result),
             three_channels(hist),
-            three_channels(canny_hist),
+            three_channels(combined),
         ),
         axis=1,
     )
@@ -105,10 +148,8 @@ def main():
 
     cv2.namedWindow("Trackbars")
     cv2.createTrackbar("Threshold", "Trackbars", 24, 255, empty)
-    cv2.createTrackbar("Sigma Color", "Trackbars", 1000, 10_000, empty)
-    cv2.createTrackbar("Sigma Space", "Trackbars", 200, 1000, empty)
-    cv2.createTrackbar("d", "Trackbars", 5, 50, empty)
     cv2.createTrackbar("Area", "Trackbars", 65, 500, empty)
+    cv2.createTrackbar("Filter Width", "Trackbars", 30, 100, empty)
 
     images = []
     for s in selected:
