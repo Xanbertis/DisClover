@@ -4,6 +4,8 @@ from time import perf_counter
 from dataclasses import dataclass
 from typing import Tuple
 
+from tqdm import tqdm
+
 
 from skimage import exposure
 
@@ -166,7 +168,7 @@ def lines_filter(image: cv2.Mat, filter_width: int) -> cv2.Mat:
     return combined
 
 
-def sides_filter(image: cv2.Mat, filter_width: int) -> cv2.Mat:
+def sides_filter(image: cv2.Mat, filter_width: int) -> Tuple[cv2.Mat, cv2.Mat]:
     h_struct = np.array(
         [
             np.zeros(filter_width),
@@ -176,14 +178,38 @@ def sides_filter(image: cv2.Mat, filter_width: int) -> cv2.Mat:
         dtype=np.uint8,
     )
 
-    v_struct = h_struct.copy().transpose()
+    v_struct = h_struct.T
 
     h_blocs = cv2.erode(image, h_struct)
     v_blocs = cv2.erode(image, v_struct)
 
-    combined = cv2.bitwise_or(h_blocs, v_blocs)
+    return h_blocs, v_blocs
 
-    return combined
+
+def extract_rects(image: cv2.Mat, canvas: cv2.Mat):
+
+    width, height = image.shape
+
+    def find_rect(x, y, maxx, maxy):
+        width = 0
+        height = 1
+        while x + width < maxx and image[x + width, y] == 0:
+            width += 1
+
+        while y + height < maxy:
+            for w in range(x, x + width):
+                if image[w, y + height] != 0:
+                    break
+            if image[x, y + height] != 0:
+                break
+            height += 1
+
+        cv2.rectangle(canvas, (x, y), (x + width, y + height), (0, 0, 255))
+
+    for y in tqdm(range(16, height - 15)):
+        for x in range(16, width - 15):
+            if image[x, y] == 0:
+                find_rect(x, y, width, height)
 
 
 def remove_corners(image: cv2.Mat) -> cv2.Mat:
@@ -195,106 +221,6 @@ def remove_corners(image: cv2.Mat) -> cv2.Mat:
     return cv2.bitwise_and(image, image, mask=corners)
 
 
-def find_windows(image: cv2.Mat, canvas: cv2.Mat):
-    contours, hierarchy = cv2.findContours(image, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-
-    min_area = cv2.getTrackbarPos("Min Area", "Trackbars")
-
-    rects = []
-
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-
-        if area > min_area:
-            rects.append(cv2.boundingRect(cnt))
-
-    def rect_len(rect):
-        _, _, w, h = rect
-        if w > h:
-            return w
-        else:
-            return h
-
-    rects.sort(key=rect_len, reverse=True)
-
-    def larger(a):
-        return a > 1
-
-    squares = []
-
-    for current in rects:
-        # iterate over all rects to find the best match for a square
-
-        x0, y0, w0, h0 = current
-
-        wh_ratio = w0 / h0
-
-        if larger(wh_ratio):
-            # we actually only care about vertical rects, since horizontal will anyway get included
-            continue
-
-        found_top = None
-        found_bottom = None
-        found_left = None
-        found_right = None
-
-        for r in rects:
-            if current == r:
-                continue
-
-            x1, y1, w1, h1 = r
-            wh1_ratio = w1 / h1
-
-            if larger(wh1_ratio):
-                if found_top is not None and found_bottom is not None:
-                    continue
-
-                v_pos = y1 + h1 // 2
-
-                top_rect_mid = x0 - w0
-                if (v_pos > (top_rect_mid - 1.5 * w0)) and (
-                    v_pos < (top_rect_mid + 1.5 * w0)
-                ):
-                    found_top = r
-                    continue
-
-                bot_rect_mid = x0 + h0 + w0
-                if (v_pos > (bot_rect_mid - 1.5 * w0)) and (
-                    v_pos < (bot_rect_mid + 1.5 * w0)
-                ):
-                    found_bottom = r
-                    continue
-
-            else:
-                if found_left is not None:
-                    continue
-
-                # horizontal space between rects
-                h_spacing = (x1 + w1 // 2) - (x0 + w0 // 2)
-                if abs(h_spacing) < 0.5 * h0 or abs(h_spacing) > 1.5 * h0:
-                    # too close or too faar
-                    continue
-
-                # now we’re good
-                if h_spacing > 0:
-                    found_left = current
-                    found_right = r
-                else:
-                    found_left = r
-                    found_right = current
-
-        # now that we found top, bottom, left, right, we need to build the square !
-        new_square: Rectangle = Rectangle.from_sides(
-            found_bottom, found_top, found_left, found_right
-        )
-
-        if new_square.probability > 0.01:
-            squares.append(new_square)
-
-    for s in squares:
-        s.draw(canvas)
-
-
 def three_channels(image: cv2.Mat):
     if len(image.shape) == 2:
         return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
@@ -302,6 +228,26 @@ def three_channels(image: cv2.Mat):
         return image.copy()
     else:
         raise NotImplementedError("WTF is an image with neither 2 nor 3 dimensions ?")
+
+
+def bb_intersection_over_union(boxA, boxB):
+    # determine the (x, y)-coordinates of the intersection rectangle
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+    # compute the area of intersection rectangle
+    interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
+    # compute the area of both the prediction and ground-truth
+    # rectangles
+    boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
+    boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
+    # compute the intersection over union by taking the intersection
+    # area and dividing it by the sum of prediction + ground-truth
+    # areas - the interesection area
+    iou = interArea / float(boxAArea + boxBArea - interArea)
+    # return the intersection over union value
+    return iou
 
 
 def process_image(image: cv2.Mat, win_name: str):
@@ -321,16 +267,67 @@ def process_image(image: cv2.Mat, win_name: str):
 
     filter_width = cv2.getTrackbarPos("Filter Width", "Trackbars")
 
-    sides = sides_filter(hist, filter_width)
+    h_sides, v_sides = sides_filter(hist, filter_width)
 
-    without_corners = remove_corners(sides)
-    without_corners = cv2.erode(without_corners, (11, 11))
+    # reprocess vertical edges
+    v_sides = remove_corners(v_sides)
+    v_sides = cv2.erode(v_sides, (3, 3))
+    v_sides = cv2.dilate(v_sides, (3, 3))
 
-    find_windows(without_corners, result)
+    min_area = cv2.getTrackbarPos("Min Area", "Trackbars")
+    contours, _ = cv2.findContours(v_sides, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+
+    v_squares = []
+
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+
+        if area > min_area:
+            # potentially suitable rect
+            x, y, w, h = cv2.boundingRect(cnt)
+
+            cv2.rectangle(result, (x, y), (x + w + h, y + h), (255, 0, 0))
+            cv2.rectangle(result, (x - h, y), (x + w, y + h), (255, 0, 0))
+
+            v_squares.append((x, y, x + w + h, y + h))
+            v_squares.append((x - h, y, x + w, y + h))
+
+    v_iou_matrix = np.zeros((len(v_squares), len(v_squares)))
+
+    for i, s1 in enumerate(v_squares):
+        for j, s2 in enumerate(v_squares):
+            if i == j:
+                continue
+
+            v_iou_matrix[i, j] = bb_intersection_over_union(s1, s2)
+
+    best_fits = np.argmax(v_iou_matrix, axis=0)
+
+    v_fit = []
+    for i, j in enumerate(best_fits):
+        if v_iou_matrix[i, j] < 0.4:
+            v_fit.append(-1)
+        else:
+            v_fit.append(j)
+
+    for s1, id_s2 in zip(v_squares, v_fit):
+        if id_s2 == -1:
+            continue
+
+        s2 = v_squares[id_s2]
+
+        xA = min(s1[0], s2[0])
+        yA = min(s1[1], s2[1])
+        xB = max(s1[2], s2[2])
+        yB = max(s1[3], s2[3])
+
+        cv2.rectangle(result, (xA, yA), (xB, yB), (0, 255, 0))
 
     result = np.concatenate(
         (
             three_channels(result),
+            three_channels(h_sides),
+            three_channels(v_sides)
             # three_channels(hist),
             # three_channels(sides),
             # three_channels(without_corners),
