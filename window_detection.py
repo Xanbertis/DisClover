@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from skimage import exposure
 
-from utils import downscale, empty
+from utils import downscale, empty, show_text
 
 
 @dataclass
@@ -230,24 +230,25 @@ def three_channels(image: cv2.Mat):
         raise NotImplementedError("WTF is an image with neither 2 nor 3 dimensions ?")
 
 
-def bb_intersection_over_union(boxA, boxB):
+def bb_intersection_over_union(s1, s2, s3, s4):
     # determine the (x, y)-coordinates of the intersection rectangle
-    xA = max(boxA[0], boxB[0])
-    yA = max(boxA[1], boxB[1])
-    xB = min(boxA[2], boxB[2])
-    yB = min(boxA[3], boxB[3])
+    xA = max(s1[0], s2[0], s3[0], s4[0])
+    yA = max(s1[1], s2[1], s3[1], s4[1])
+    xB = min(s1[2], s2[2], s3[2], s4[2])
+    yB = min(s1[3], s2[3], s3[3], s4[3])
     # compute the area of intersection rectangle
-    interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
-    # compute the area of both the prediction and ground-truth
-    # rectangles
-    boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
-    boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
+    interArea = max(0, xB - xA) * max(0, yB - yA)
+
     # compute the intersection over union by taking the intersection
     # area and dividing it by the sum of prediction + ground-truth
     # areas - the interesection area
-    iou = interArea / float(boxAArea + boxBArea - interArea)
+    iou = interArea / float(s1[4] + s2[4] + s3[4] + s4[4] - 3 * interArea)
     # return the intersection over union value
     return iou
+
+
+def draw_rect(canvas, rect, color, **kwarg):
+    cv2.rectangle(canvas, (rect[0], rect[1]), (rect[2], rect[3]), color, **kwarg)
 
 
 def process_image(image: cv2.Mat, win_name: str):
@@ -278,7 +279,6 @@ def process_image(image: cv2.Mat, win_name: str):
     contours, _ = cv2.findContours(v_sides, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
 
     v_squares = []
-
     for cnt in contours:
         area = cv2.contourArea(cnt)
 
@@ -286,42 +286,113 @@ def process_image(image: cv2.Mat, win_name: str):
             # potentially suitable rect
             x, y, w, h = cv2.boundingRect(cnt)
 
-            cv2.rectangle(result, (x, y), (x + w + h, y + h), (255, 0, 0))
-            cv2.rectangle(result, (x - h, y), (x + w, y + h), (255, 0, 0))
-
-            v_squares.append((x, y, x + w + h, y + h))
-            v_squares.append((x - h, y, x + w, y + h))
-
-    v_iou_matrix = np.zeros((len(v_squares), len(v_squares)))
-
-    for i, s1 in enumerate(v_squares):
-        for j, s2 in enumerate(v_squares):
-            if i == j:
+            h_over_w = h / w
+            # our target ratio is 3 (30 * 10 rectangle)
+            # a ratio less than 1 is not acceptable
+            # similarly is a ratio more than 10
+            if h_over_w < 1 or h_over_w > 10:
                 continue
 
-            v_iou_matrix[i, j] = bb_intersection_over_union(s1, s2)
+            s1 = ((x + w, y), (x + w + h, y + h))
+            s2 = ((x - h, y), (x, y + h))
 
-    best_fits = np.argmax(v_iou_matrix, axis=0)
+            # cv2.rectangle(result, s1[0], s1[1], (255, 213, 115))
+            # cv2.rectangle(result, s2[0], s2[1], (255, 213, 115))
 
-    v_fit = []
-    for i, j in enumerate(best_fits):
-        if v_iou_matrix[i, j] < 0.4:
-            v_fit.append(-1)
+            # cv2.rectangle(result, (x, y), (x + w, y + h), (255, 0, 0))
+
+            rect_area = h * h
+
+            v_squares.append((s1[0][0], s1[0][1], s1[1][0], s1[1][1], rect_area))
+            v_squares.append((s2[0][0], s2[0][1], s2[1][0], s2[1][1], rect_area))
+
+    contours, _ = cv2.findContours(h_sides, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+
+    h_squares = []
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+
+        if area > min_area:
+            # potentially suitable rect
+            x, y, w, h = cv2.boundingRect(cnt)
+
+            s1 = ((x, y + h), (x + w, y + h + w))
+            s2 = ((x, y - w), (x + w, y))
+
+            # cv2.rectangle(result, s1[0], s1[1], (51, 194, 255))
+            # cv2.rectangle(result, s2[0], s2[1], (51, 194, 255))
+
+            # cv2.rectangle(result, (x, y), (x + w, y + h), (0, 0, 255))
+
+            rect_area = w * w
+
+            h_squares.append((s1[0][0], s1[0][1], s1[1][0], s1[1][1], rect_area))
+            h_squares.append((s2[0][0], s2[0][1], s2[1][0], s2[1][1], rect_area))
+
+    v_iou_matrix = np.zeros(
+        (len(v_squares), len(v_squares), len(h_squares), len(h_squares))
+    )
+
+    # yup, this is n⁴ (actually n²m² but no one cares)
+    for i, s1 in enumerate(v_squares):
+        for j, s2 in enumerate(v_squares):
+            for k, s3 in enumerate(h_squares):
+                for l, s4 in enumerate(h_squares):
+
+                    v_iou_matrix[i, j, k, l] = bb_intersection_over_union(
+                        s1, s2, s3, s4
+                    )
+
+    best_fits = list(
+        zip(
+            *np.unravel_index(
+                np.argsort(v_iou_matrix, axis=None, kind="stable"), v_iou_matrix.shape
+            )
+        )
+    )
+    best_fits.reverse()
+
+    show_text(result, f"{len(v_squares)}, {len(h_squares)}", (20, 20), (0, 0, 0))
+
+    min_iou = cv2.getTrackbarPos("Min IOU x10 000", "Trackbars") / 10_000
+    count = 1
+
+    for best_fit in best_fits:
+        if v_iou_matrix[best_fit] < min_iou:
+            break
+
+        # no matter how many, stop after 5 best
+        if count <= 5:
+            count += 1
         else:
-            v_fit.append(j)
+            break
 
-    for s1, id_s2 in zip(v_squares, v_fit):
-        if id_s2 == -1:
-            continue
+        s1 = v_squares[best_fit[0]]
+        s2 = v_squares[best_fit[1]]
+        s3 = h_squares[best_fit[2]]
+        s4 = h_squares[best_fit[3]]
 
-        s2 = v_squares[id_s2]
+        xA = min(s1[0], s2[0], s3[0], s4[0])
+        yA = min(s1[1], s2[1], s3[1], s4[1])
+        xB = max(s1[2], s2[2], s3[2], s4[2])
+        yB = max(s1[3], s2[3], s3[3], s4[3])
 
-        xA = min(s1[0], s2[0])
-        yA = min(s1[1], s2[1])
-        xB = max(s1[2], s2[2])
-        yB = max(s1[3], s2[3])
+        # draw_rect(result, s1, (0, 255, 0))
+        # draw_rect(result, s2, (0, 255, 0))
+        # draw_rect(result, s3, (0, 255, 0))
+        # draw_rect(result, s3, (0, 255, 0))
 
-        cv2.rectangle(result, (xA, yA), (xB, yB), (0, 255, 0))
+        draw_rect(
+            result,
+            (xA, yA, xB, yB),
+            (0, int(255 * v_iou_matrix[best_fit]), 0),
+            thickness=2,
+        )
+
+        show_text(
+            result, f"{v_iou_matrix[best_fit]:.2f}", (250, 20 * (count - 1)), (0, 0, 0)
+        )
+        show_text(result, f"{np.max(v_iou_matrix)}", (250, 300), (0, 0, 0))
 
     result = np.concatenate(
         (
@@ -347,6 +418,8 @@ def main():
     cv2.createTrackbar("Min Area", "Trackbars", 65, 500, empty)
     cv2.createTrackbar("Filter Width", "Trackbars", 30, 100, empty)
     cv2.createTrackbar("Bar Width", "Trackbars", 20, 100, empty)
+
+    cv2.createTrackbar("Min IOU x10 000", "Trackbars", 30, 10_000, empty)
 
     images = []
     for s in selected:
