@@ -230,6 +230,10 @@ def three_channels(image: cv2.Mat):
         raise NotImplementedError("WTF is an image with neither 2 nor 3 dimensions ?")
 
 
+# note for later : use functional calls to reduce both function to only one that accepts
+# a list of squares, and compute IOU of an arbitrary number of squares (take inspiration from the 4-way formula)
+
+
 def bb_intersection_over_union(s1, s2, s3, s4):
     # determine the (x, y)-coordinates of the intersection rectangle
     xA = max(s1[0], s2[0], s3[0], s4[0])
@@ -243,6 +247,26 @@ def bb_intersection_over_union(s1, s2, s3, s4):
     # area and dividing it by the sum of prediction + ground-truth
     # areas - the interesection area
     iou = interArea / float(s1[4] + s2[4] + s3[4] + s4[4] - 3 * interArea)
+    # return the intersection over union value
+    return iou
+
+
+def iou_2(s1, s2):
+    # determine the (x, y)-coordinates of the intersection rectangle
+    xA = max(s1[0], s2[0])
+    yA = max(s1[1], s2[1])
+    xB = min(s1[2], s2[2])
+    yB = min(s1[3], s2[3])
+    # compute the area of intersection rectangle
+    interArea = max(0, xB - xA) * max(0, yB - yA)
+
+    # compute the intersection over union by taking the intersection
+    # area and dividing it by the sum of prediction + ground-truth
+    # areas - the interesection area
+    area1 = (s1[2] - s1[0]) * (s1[3] - s1[1])
+    area2 = (s2[2] - s2[0]) * (s2[3] - s2[1])
+
+    iou = interArea / float(area1 + area2 - interArea)
     # return the intersection over union value
     return iou
 
@@ -272,7 +296,7 @@ def process_image(image: cv2.Mat, win_name: str):
 
     # reprocess vertical edges
     v_sides = remove_corners(v_sides)
-    v_sides = cv2.erode(v_sides, (3, 3))
+    v_sides = cv2.erode(v_sides, (5, 5))
     v_sides = cv2.dilate(v_sides, (3, 3))
 
     min_area = cv2.getTrackbarPos("Min Area", "Trackbars")
@@ -357,14 +381,11 @@ def process_image(image: cv2.Mat, win_name: str):
     min_iou = cv2.getTrackbarPos("Min IOU x10 000", "Trackbars") / 10_000
     count = 1
 
+    found_squares = []
+    max_iou = cv2.getTrackbarPos("Max IOU", "Trackbars") / 10_000
+
     for best_fit in best_fits:
         if v_iou_matrix[best_fit] < min_iou:
-            break
-
-        # no matter how many, stop after 5 best
-        if count <= 5:
-            count += 1
-        else:
             break
 
         s1 = v_squares[best_fit[0]]
@@ -377,29 +398,44 @@ def process_image(image: cv2.Mat, win_name: str):
         xB = max(s1[2], s2[2], s3[2], s4[2])
         yB = max(s1[3], s2[3], s3[3], s4[3])
 
+        window = (xA, yA, xB, yB)
+
+        # we check that our window is not similar to another already found window
+        if found_squares == []:
+            found_squares.append((v_iou_matrix[best_fit], window))
+        else:
+            valid = True
+            for _, window2 in found_squares:
+                if iou_2(window, window2) >= max_iou:
+                    valid = False
+                    break
+
+            if valid:
+                found_squares.append((v_iou_matrix[best_fit], window))
+
         # draw_rect(result, s1, (0, 255, 0))
         # draw_rect(result, s2, (0, 255, 0))
         # draw_rect(result, s3, (0, 255, 0))
         # draw_rect(result, s3, (0, 255, 0))
 
+    for i, (score, window) in enumerate(found_squares):
         draw_rect(
             result,
-            (xA, yA, xB, yB),
-            (0, int(255 * v_iou_matrix[best_fit]), 0),
+            window,
+            (0, int(255 * score), 0),
             thickness=2,
         )
 
-        show_text(
-            result, f"{v_iou_matrix[best_fit]:.2f}", (250, 20 * (count - 1)), (0, 0, 0)
-        )
-        show_text(result, f"{np.max(v_iou_matrix)}", (250, 300), (0, 0, 0))
+        show_text(result, f"{score:.2f}", (250, 20 * (i + 1)), (0, 0, 0))
+
+    show_text(result, f"{np.max(v_iou_matrix)}", (250, 300), (0, 0, 0))
 
     result = np.concatenate(
         (
             three_channels(result),
             three_channels(h_sides),
-            three_channels(v_sides)
-            # three_channels(hist),
+            three_channels(v_sides),
+            three_channels(hist)
             # three_channels(sides),
             # three_channels(without_corners),
         ),
@@ -416,10 +452,11 @@ def main():
     cv2.namedWindow("Trackbars")
     cv2.createTrackbar("Threshold", "Trackbars", 24, 255, empty)
     cv2.createTrackbar("Min Area", "Trackbars", 65, 500, empty)
-    cv2.createTrackbar("Filter Width", "Trackbars", 30, 100, empty)
+    cv2.createTrackbar("Filter Width", "Trackbars", 30, 50, empty)
     cv2.createTrackbar("Bar Width", "Trackbars", 20, 100, empty)
 
-    cv2.createTrackbar("Min IOU x10 000", "Trackbars", 30, 10_000, empty)
+    cv2.createTrackbar("Min IOU x10 000", "Trackbars", 300, 10_000, empty)
+    cv2.createTrackbar("Max IOU", "Trackbars", 4000, 10_000, empty)
 
     images = []
     for s in selected:
