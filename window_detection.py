@@ -428,7 +428,8 @@ def process_image(image: cv2.Mat, win_name: str):
 
         show_text(result, f"{score:.2f}", (250, 20 * (i + 1)), (0, 0, 0))
 
-    show_text(result, f"{np.max(v_iou_matrix)}", (250, 300), (0, 0, 0))
+    if len(v_iou_matrix != 0):
+        show_text(result, f"{np.max(v_iou_matrix)}", (250, 300), (0, 0, 0))
 
     result = np.concatenate(
         (
