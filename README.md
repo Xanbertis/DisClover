@@ -1,3 +1,5 @@
+![Nique](https://github.com/Xanbertis/DisClover/assets/51889880/26c62c01-32bc-407e-8a25-c44a5cfec76e)
+
 Epics : 
 -	Réduire la taille de moitié
 
